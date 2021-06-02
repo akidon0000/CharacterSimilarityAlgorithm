@@ -49,13 +49,13 @@ func algorithm(my_my string, my_par string, my_qua string, par_my string, par_pa
 	correction1 := 0.0 // 補正値1
 	correction2 := 0.0 // 補正値2
 	correction3 := 0.0 // 補正値3 quadkey距離
-	zoomLevel, err := strconv.Atoi(z)
+	quadLevel, err := strconv.Atoi(z)
 	if err != nil {
 		fmt.Println("Atoi zoomLevel ERROR")
 	}
 
 	// 範囲外なら結果は0
-	if my_qua[0:zoomLevel] != par_qua[0:zoomLevel] {
+	if my_qua[0:quadLevel] != par_qua[0:quadLevel] {
 		return 0, 0, 0, 0, 0
 	}
 
@@ -81,11 +81,11 @@ func algorithm(my_my string, my_par string, my_qua string, par_my string, par_pa
 	correction2 -= float64(textdistance.LevenshteinDistance(my_par, par_my) * matchLevel)
 
 	// どれほど距離が近いか (プラス補正)
-	a, err := strconv.Atoi(my_qua[zoomLevel:qua_1Len])
+	a, err := strconv.Atoi(my_qua[quadLevel:qua_1Len])
 	if err != nil {
 		fmt.Println("Atoi a ERROR")
 	}
-	b, err := strconv.Atoi(par_qua[zoomLevel:qua_2Len])
+	b, err := strconv.Atoi(par_qua[quadLevel:qua_2Len])
 	if err != nil {
 		fmt.Println("Atoi b ERROR")
 	}
