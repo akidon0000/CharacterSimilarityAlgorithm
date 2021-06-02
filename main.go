@@ -2,140 +2,112 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"strconv"
-	"time"
-  "math/rand"
+	"unicode/utf8"
 
 	"github.com/360EntSecGroup-Skylar/excelize"
-
-	// "github.com/masatana/go-textdistance"
-	// "github.com/toldjuuso/go-jaro-winkler-distance"
+	"github.com/masatana/go-textdistance"
 )
 
 // ===============
-const excelPath = "./testData.xlsx"
+const excelPath = "./matching.xlsx"
 const excelSheet = "Sheet1"
-const testNum = 500000
-// const quadkey1 = 123123123012312312
-// const quadkey2 = 123123123012122312
 
 // ===============
 
-func main(){
+func main() {
+	fmt.Println("\n", "\n", "---相性診断開始---\n", "Ver,0.1.2")
 	f, err := excelize.OpenFile(excelPath)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	for i := 0; i < testNum; i++ {
-		fmt.Println(i+1)
-		rand.Seed(time.Now().UnixNano())
-		var a int
-		var b int
-    for i := 0; i < 10; i++ {
-			a = int(rand.Intn(8)+1)
-			b = int(rand.Intn(8)+1)
-    }
-		random1, _ := MakeRandomStr(a)
-		random2, _ := MakeRandomStr(b)
-		f.SetCellValue(excelSheet, "A"+strconv.Itoa(i+1), "0")
-		f.SetCellValue(excelSheet, "B"+strconv.Itoa(i+1), "test20210524-" + strconv.Itoa(i+1))
-		f.SetCellValue(excelSheet, "C"+strconv.Itoa(i+1), random1)
-		f.SetCellValue(excelSheet, "D"+strconv.Itoa(i+1), random2)
-		f.SetCellValue(excelSheet, "E"+strconv.Itoa(i+1), "0133002112310210000")
-		f.SetCellValue(excelSheet, "F"+strconv.Itoa(i+1), "NULL")
+
+	rows := f.GetRows(excelSheet)
+	for a, row := range rows {
+		if a == 0 {
+			continue
+		}
+		h, i, j, k, l := algorithm(row[0], row[1], row[2], row[3], row[4], row[5], row[6])
+
+		f.SetCellValue(excelSheet, "H"+strconv.Itoa(a+1), h)
+		f.SetCellValue(excelSheet, "I"+strconv.Itoa(a+1), i)
+		f.SetCellValue(excelSheet, "J"+strconv.Itoa(a+1), j)
+		f.SetCellValue(excelSheet, "K"+strconv.Itoa(a+1), k)
+		f.SetCellValue(excelSheet, "L"+strconv.Itoa(a+1), l)
 	}
 	f.SaveAs(excelPath)
+	fmt.Println("\n", "\n", "---終了---\n")
 }
 
-func MakeRandomStr(digit int) (string, error) {
-    const letters = "あいうえおかきくけこさしすせそたちつてとなにぬねのまみむめもはひふへほやゆよらりるれろわをんんんんあいうえおかきくけこ"
-		rand.Seed(time.Now().UnixNano())
+func algorithm(my_my string, my_par string, my_qua string, par_my string, par_par string, par_qua string, z string) (float64, float64, float64, float64, float64) {
 
-		var a int
-    var result string
-		result = ""
-    for i := 0; i < digit; i++ {
-			for i := 0; i < 50; i++ {
-				a = rand.Intn(50)
-			}
-			rs := []rune(letters)
-			result += string(rs[a:a+1])
-    }
-    return result, nil
+	rawAffinity := 0.0 // [補正前]相性度
+	affinity := 0.0    // [補正後]相性度
+	matchLevel := 10   // 補正強度 高いほど相性度が下がる
+	correction1 := 0.0 // 補正値1
+	correction2 := 0.0 // 補正値2
+	correction3 := 0.0 // 補正値3 quadkey距離
+	zoomLevel, err := strconv.Atoi(z)
+	if err != nil {
+		fmt.Println("Atoi zoomLevel ERROR")
+	}
+
+	// 範囲外なら結果は0
+	if my_qua[0:zoomLevel] != par_qua[0:zoomLevel] {
+		return 0, 0, 0, 0, 0
+	}
+
+	// 文字数
+	a_Len := utf8.RuneCountInString(my_my)
+	b_Len := utf8.RuneCountInString(my_par)
+	c_Len := utf8.RuneCountInString(par_my)
+	d_Len := utf8.RuneCountInString(par_par)
+	qua_1Len := utf8.RuneCountInString(my_qua)
+	qua_2Len := utf8.RuneCountInString(par_qua)
+
+	// 0-100の値をとる
+	rawAffinity += textdistance.JaroWinklerDistance(my_my, par_par) * 100
+	rawAffinity += textdistance.JaroWinklerDistance(my_par, par_my) * 100
+	rawAffinity /= 2
+
+	// それぞれ文字数が多いほど，文字数が一致してるほど補正値は高い (プラス補正)
+	// correction1 += float64((b_Len + c_Len) + (b_Len - c_Len) + (a_Len + d_Len) + (a_Len - d_Len))
+	correction1 += float64(( a_Len + b_Len + c_Len + d_Len) / 4)
+
+	// 何文字異なっているか × matchLevel (マイナス補正)
+	correction2 -= float64(textdistance.LevenshteinDistance(my_my, par_par) * matchLevel)
+	correction2 -= float64(textdistance.LevenshteinDistance(my_par, par_my) * matchLevel)
+
+	// どれほど距離が近いか (プラス補正)
+	a, err := strconv.Atoi(my_qua[zoomLevel:qua_1Len])
+	if err != nil {
+		fmt.Println("Atoi a ERROR")
+	}
+	b, err := strconv.Atoi(par_qua[zoomLevel:qua_2Len])
+	if err != nil {
+		fmt.Println("Atoi b ERROR")
+	}
+	// Quadkeyの差分
+	c := strconv.Itoa(int(math.Abs(float64(a) - float64(b))))
+	correction3 -= float64(utf8.RuneCountInString(c)) * 1.5
+	// 差分が0の時を差し引く
+	if c == "0" {
+		correction3 = 0
+	}
+
+	affinity = rawAffinity
+
+	affinity += correction1
+	affinity += correction2
+	if affinity > 100 {
+		affinity = 100
+	}
+	affinity += correction3
+	if 0 > affinity {
+		affinity = 0
+	}
+
+	return affinity, correction1, correction2, correction3, rawAffinity
 }
-
-
-
-
-
-
-// func main() {
-// 	fmt.Println("====")
-// 	str := "aaaa"
-// 	fmt.Println(utf8.RuneCountInString(str))
-// 	for i := 0; i < utf8.RuneCountInString(str); i++ {
-// 		s := str[:len(str)/utf8.RuneCountInString(str)]
-// 		fmt.Println(s)
-// 		for j := i; j < utf8.RuneCountInString(str)-1; j++ {
-// 			s += "_"
-// 		}
-// 		fmt.Println("s:")
-// 		fmt.Println(s)
-// 	}
-
-// 	fmt.Println("==開始==")
-// 	f, err := excelize.OpenFile(excelPath)
-// 	if err != nil {
-// 		fmt.Println(err)
-// 		return
-// 	}
-
-// 	rows := f.GetRows(excelSheet)
-// 	for i, row := range rows {
-// 		fmt.Print(i)
-// 		fmt.Println("==============")
-// 		fmt.Println(textdistance.LevenshteinDistance(row[0], row[1]))
-// 		fmt.Println(textdistance.DamerauLevenshteinDistance(row[0], row[1]))
-// 		fmt.Println(textdistance.JaroDistance(row[0], row[1]))
-// 		fmt.Println(textdistance.JaroWinklerDistance(row[0], row[1]))
-// 		// str := lss(row[0], row[1])
-// 		// str := textdistance.JaroWinklerDistance
-// 		fmt.Println(jwd.Calculate(row[0], row[1]))
-// 		str := jwd.Calculate(row[0], row[1])
-// 		fmt.Println(row[0] + " " + row[1] + " : " + strconv.FormatFloat(str, 'f', 2, 64))
-// 		num := 10 - utf8.RuneCountInString(strconv.Itoa(quadkey1-quadkey2))
-// 		fmt.Println("---")
-// 		fmt.Println(num)
-// 		f.SetCellValue(excelSheet, "C"+strconv.Itoa(i+1), str)
-// 	}
-// 	f.SaveAs(excelPath)
-// 	fmt.Println("==完了しました==")
-// }
-
-// func ld(s string, t string) float64 {
-// 	if s == "" {
-// 		return float64(utf8.RuneCountInString(t))
-// 	}
-// 	if t == "" {
-// 		return float64(utf8.RuneCountInString(s))
-// 	}
-// 	if s[0] == t[0] {
-// 		return ld(s[1:], t[1:])
-// 	}
-// 	l1 := ld(s, t[1:])
-// 	l2 := ld(s[1:], t)
-// 	l3 := ld(s[1:], t[1:])
-// 	return 1 + math.Min(l1, math.Min(l2, l3))
-// }
-
-// func lds(s string, t string) float64 {
-// 	fmt.Println(ld(s, t))
-// 	fmt.Println(math.Max(float64(utf8.RuneCountInString(s)), float64(utf8.RuneCountInString(t))))
-// 	return ld(s, t) / math.Max(float64(utf8.RuneCountInString(s)), float64(utf8.RuneCountInString(t)))
-// 	// return ld(s, t)
-// }
-
-// func lss(s string, t string) float64 {
-// 	return -lds(s, t) + 1
-// }
